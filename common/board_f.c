@@ -36,6 +36,7 @@
 #include <asm/mp.h>
 #endif
 #include <asm/io.h>
+#include <asm/gpio.h>
 #include <asm/sections.h>
 #include <dm/root.h>
 #include <linux/errno.h>
@@ -773,6 +774,56 @@ __weak int arch_cpu_init_dm(void)
 	return 0;
 }
 
+/**
+ * check_hw_ver() checks Avenger96 board HW coding
+ * see PD9 and PG13 pins in schematics
+ */
+static int check_hw_ver(void)
+{
+	ofnode node;
+	struct gpio_desc gpio;
+	int dts_av96_ver;
+	unsigned int board_ver = 0u;
+
+	dts_av96_ver = fdtdec_get_config_int(gd->fdt_blob, "dh,avenger96-hwver", -1) & 0xff;
+
+	node = ofnode_path("/config");
+	if (!ofnode_valid(node)) {
+		debug("%s: no /config node?\n", __func__);
+		return EINVAL;
+	}
+
+	if (gpio_request_by_name_nodev(node, "dh,hwver-gpios", 0, &gpio, GPIOD_IS_IN)) {
+		debug("%s: could not find /config/dh,hwver-gpios/0\n", __func__);
+		return EINVAL;
+	}
+
+	if (dm_gpio_get_value(&gpio))
+		board_ver |= 0x01u;
+
+	dm_gpio_free(NULL, &gpio);
+
+
+	if (gpio_request_by_name_nodev(node, "dh,hwver-gpios", 1, &gpio, GPIOD_IS_IN)) {
+		debug("%s: could not find /config/dh,hwver-gpios/1\n", __func__);
+		return EINVAL;
+	}
+
+	if (dm_gpio_get_value(&gpio))
+		board_ver |= 0x02u;
+
+	dm_gpio_free(NULL, &gpio);
+
+	if ( board_ver != dts_av96_ver ) {
+		printf( "\n********************************************\n" );
+		printf( "* HW coding should be 0x%02x, detected: 0x%02x *\n", dts_av96_ver, (int )board_ver );
+		printf( "********************************************\n\n" );
+		mdelay( 10000 );
+	}
+
+	return 0;
+}
+
 static const init_fnc_t init_sequence_f[] = {
 	setup_mon_len,
 #ifdef CONFIG_OF_CONTROL
@@ -825,6 +876,7 @@ static const init_fnc_t init_sequence_f[] = {
 #endif
 #if defined(CONFIG_DISPLAY_BOARDINFO)
 	show_board_info,
+	check_hw_ver,
 #endif
 	INIT_FUNC_WATCHDOG_INIT
 #if defined(CONFIG_MISC_INIT_F)

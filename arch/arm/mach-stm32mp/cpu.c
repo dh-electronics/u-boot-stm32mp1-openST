@@ -16,6 +16,7 @@
 #include <dm/uclass.h>
 #include <dt-bindings/clock/stm32mp1-clks.h>
 #include <dt-bindings/pinctrl/stm32-pinfunc.h>
+#include <i2c_eeprom.h>
 
 /* RCC register */
 #define RCC_TZCR		(STM32_RCC_BASE + 0x00)
@@ -83,6 +84,9 @@
 #define PKG_AB_LBGA354	3
 #define PKG_AC_TFBGA361	2
 #define PKG_AD_TFBGA257	1
+
+/* MAC ADDR offset in MAC EEPROM */
+#define MAC24AA02_MAC_ADDR  0xfa
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -441,46 +445,37 @@ static void setup_boot_mode(void)
 
 /*
  * If there is no MAC address in the environment, then it will be initialized
- * (silently) from the value in the OTP.
+ * (silently) from the value in the MAC EEPROM.
  */
 static int setup_mac_address(void)
 {
 #if defined(CONFIG_NET)
-	int ret;
-	int i;
-	u32 otp[2];
-	uchar enetaddr[6];
+	uchar ethaddr[6];
 	struct udevice *dev;
+	int ret;
 
-	/* MAC already in environment */
-	if (eth_env_get_enetaddr("ethaddr", enetaddr))
+	if (eth_env_get_enetaddr("ethaddr", ethaddr))
 		return 0;
 
-	ret = uclass_get_device_by_driver(UCLASS_MISC,
-					  DM_GET_DRIVER(stm32mp_bsec),
-					  &dev);
-	if (ret)
+	ret = uclass_first_device_err(UCLASS_I2C_EEPROM, &dev);
+	if (ret) {
+		pr_err( "MAC EEPROM not found\n" );
 		return ret;
+	}
 
-	ret = misc_read(dev, STM32_BSEC_SHADOW(BSEC_OTP_MAC),
-			otp, sizeof(otp));
-	if (ret)
+	ret = i2c_eeprom_read(dev, MAC24AA02_MAC_ADDR, ethaddr, 6);
+	if (ret) {
+		pr_err( "Failed to read MAC EEPROM\n" );
 		return ret;
+	}
 
-	for (i = 0; i < 6; i++)
-		enetaddr[i] = ((uint8_t *)&otp)[i];
-
-	if (!is_valid_ethaddr(enetaddr)) {
-		pr_err("invalid MAC address in OTP %pM", enetaddr);
+	if (is_valid_ethaddr(ethaddr))
+		eth_env_set_enetaddr("ethaddr", ethaddr);
+	else {
+		pr_err("invalid MAC address in OTP %pM\n", ethaddr);
 		return -EINVAL;
 	}
-	pr_debug("OTP MAC address = %pM\n", enetaddr);
-	ret = !eth_env_set_enetaddr("ethaddr", enetaddr);
-	if (!ret)
-		pr_err("Failed to set mac address %pM from OTP: %d\n",
-		       enetaddr, ret);
 #endif
-
 	return 0;
 }
 

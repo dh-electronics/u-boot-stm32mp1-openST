@@ -691,6 +691,27 @@ static int eqos_start_resets_tegra186(struct udevice *dev)
 
 static int eqos_start_resets_stm32(struct udevice *dev)
 {
+	struct eqos_priv *eqos = dev_get_priv(dev);
+	int ret;
+  
+	debug("%s(dev=%p):\n", __func__, dev);
+  
+	ret = dm_gpio_set_value(&eqos->phy_reset_gpio, 1);
+	if (ret < 0) {
+		pr_err("dm_gpio_set_value(phy_reset, assert) failed: %d", ret);
+		return ret;
+	}
+  
+	udelay(2);
+  
+	ret = dm_gpio_set_value(&eqos->phy_reset_gpio, 0);
+	if (ret < 0) {
+		pr_err("dm_gpio_set_value(phy_reset, deassert) failed: %d", ret);
+		return ret;
+	}
+
+    debug("%s: OK\n", __func__);
+
 	return 0;
 }
 
@@ -1551,6 +1572,7 @@ err_free_clk_master_bus:
 err_free_clk_slave_bus:
 	clk_free(&eqos->clk_slave_bus);
 err_free_gpio_phy_reset:
+	pr_err("**** dm_gpio_free( phy_reset_gpio )\n" );
 	dm_gpio_free(dev, &eqos->phy_reset_gpio);
 err_free_reset_eqos:
 	reset_free(&eqos->reset_ctl);
@@ -1595,6 +1617,16 @@ static int eqos_probe_resources_stm32(struct udevice *dev)
 				       eth_ref_clk_sel_reg);
 	if (ret)
 		return -EINVAL;
+
+	debug("%s(dev=%p):\n", __func__, dev);
+
+	ret = gpio_request_by_name(dev, "phy-reset-gpios", 0,
+							   &eqos->phy_reset_gpio,
+							   GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
+	if (ret) {
+		pr_err("gpio_request_by_name(phy reset) failed: %d", ret);
+		return ret;
+	}
 
 	ret = clk_get_by_name(dev, "stmmaceth", &eqos->clk_master_bus);
 	if (ret) {
@@ -1682,6 +1714,8 @@ static int eqos_remove_resources_stm32(struct udevice *dev)
 	if (clk_valid(&eqos->clk_ck))
 		clk_free(&eqos->clk_ck);
 
+	dm_gpio_free(dev, &eqos->phy_reset_gpio);
+
 	debug("%s: OK\n", __func__);
 	return 0;
 }
@@ -1741,8 +1775,14 @@ static int eqos_probe(struct udevice *dev)
 		goto err_free_mdio;
 	}
 
-	eqos->phy = phy_connect(eqos->mii, 0, dev,
+	ret = eqos->config->ops->eqos_start_resets(dev);
+	if (ret < 0) {
+		pr_err("eqos_start_resets() failed: %d", ret);
+		goto err_free_mdio;
+	}
+	eqos->phy = phy_connect(eqos->mii, 7, dev,
 				eqos->config->interface(dev));
+
 	if (!eqos->phy) {
 		pr_err("phy_connect() failed");
 		goto err_stop_resets;
@@ -1763,7 +1803,7 @@ err_stop_resets:
 	eqos->config->ops->eqos_stop_resets(dev);
 	eqos->config->ops->eqos_stop_clks(dev);
 err_free_mdio:
-	mdio_free(eqos->mii);
+	/* mdio_free(eqos->mii); */
 err_remove_resources_tegra:
 	eqos->config->ops->eqos_remove_resources(dev);
 err_remove_resources_core:

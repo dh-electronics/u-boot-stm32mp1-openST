@@ -746,12 +746,16 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_PPC
 	initr_spi,
 #endif
+
+#if 0
 #ifdef CONFIG_CMD_NAND
 	initr_nand,
 #endif
 #ifdef CONFIG_CMD_ONENAND
 	initr_onenand,
 #endif
+#endif
+
 #ifdef CONFIG_MMC
 	initr_mmc,
 #endif
@@ -815,10 +819,12 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_BITBANGMII
 	initr_bbmii,
 #endif
+
 #ifdef CONFIG_CMD_NET
 	INIT_FUNC_WATCHDOG_RESET
 	initr_net,
 #endif
+
 #ifdef CONFIG_POST
 	initr_post,
 #endif

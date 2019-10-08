@@ -27,6 +27,7 @@
 #include <jffs2/load_kernel.h>
 #include <power/regulator.h>
 #include <usb/dwc2_udc.h>
+#include <fuse.h>
 
 /* SYSCFG registers */
 #define SYSCFG_BOOTR		0x00
@@ -426,6 +427,24 @@ int g_dnl_bind_fixup(struct usb_device_descriptor *dev, const char *name)
 }
 #endif /* CONFIG_USB_GADGET */
 
+static int check_product_below_2v5( void )
+{
+	int ret;
+	u32 otp;
+
+	ret = fuse_read( 0, 18, &otp );
+	if ( !ret ) {
+		if ( !( otp & ( 1u << 13 ) ) ) {
+			pr_err( "PRODUCT_BELOW_2V5 fuse not set. Programming ...\n" );
+			ret = fuse_prog( 0, 18, ( 1u << 13 ) );
+			mdelay( 3000 );
+			do_reset(NULL, 0, 0, NULL);
+		}
+	}
+
+	return ret;
+}
+
 static void sysconf_init(void)
 {
 	u8 *syscfg;
@@ -478,6 +497,12 @@ static void sysconf_init(void)
 						  &dev);
 		if (ret) {
 			pr_err("Can't find stm32mp_bsec driver\n");
+			return;
+		}
+
+		ret = check_product_below_2v5( );
+		if (ret) {
+			pr_err("Reading fuse failed\n");
 			return;
 		}
 

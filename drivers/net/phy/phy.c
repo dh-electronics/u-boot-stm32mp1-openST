@@ -737,6 +737,7 @@ static struct phy_device *get_phy_device_by_mask(struct mii_dev *bus,
 	int i;
 	struct phy_device *phydev;
 
+	mdelay(5);		/* 5 ms */
 	phydev = search_for_existing_phy(bus, phy_mask, interface);
 	if (phydev)
 		return phydev;

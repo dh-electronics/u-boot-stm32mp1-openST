@@ -123,7 +123,7 @@ static int ksz90x1_of_config_group(struct phy_device *phydev,
 		} else {
 			changed = 1;	/* Value was changed in OF */
 			/* Calculate the register value and fix corner cases */
-			if (val[i] > ps_to_regval * 0xf) {
+			if (val[i] > ps_to_regval * 0x1f) {
 				max = (1 << ofcfg->grp[i].size) - 1;
 				regval |= max << offset;
 			} else {
@@ -135,6 +135,7 @@ static int ksz90x1_of_config_group(struct phy_device *phydev,
 	if (!changed)
 		return 0;
 
+	/* printf( "ksz90x1 writeext( %i, 0x%04x )\n", (int )ofcfg->reg, (int )regval ); */
 	return drv->writeext(phydev, 0, ofcfg->devad, ofcfg->reg, regval);
 }
 
